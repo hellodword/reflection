@@ -5,28 +5,15 @@ edition = "2024"
 authors = [
   "adz <x12@adz.garden>",
   "sandreae <contact@samandreae.com>",
-  "Julian Sparber <julian@sparber.net>"
+  "Julian Sparber <julian@sparber.net>",
 ]
 
 [dependencies]
 reflection-doc = { path = "../reflection-doc" }
-gettext-rs = { version = "0.7", features = ["gettext-system"] }
-gtk = { version = "0.10", package = "gtk4", features = ["gnome_48", "v4_20", "blueprint"] }
-sourceview = { package = "sourceview5", version = "0.10" }
+anyhow = "1"
+ratatui = { version = "0.27", features = ["crossterm"] }
+crossterm = "0.27"
+tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "time"] }
+glib = "0.21"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
-ashpd = { version = "0.12", default-features = false, features = ["tracing", "async-std"] }
-thiserror = { version = "2.0" }
-futures-util = "0.3"
-oo7 = { version = "0.5", default-features = false, features = [
-    "openssl_crypto",
-    "async-std",
-    "tracing",
-] }
-libspelling = "0.4.1"
-formatx = "0.2.4"
-
-[dependencies.adw]
-package = "libadwaita"
-version = "0.8"
-features = ["v1_7"]
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
