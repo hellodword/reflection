@@ -64,22 +64,4 @@ impl Author {
     pub(crate) fn public_key(&self) -> PublicKey {
         self.public_key.clone()
     }
-
-    pub(crate) fn set_online(&self, is_online: bool) {
-        let was_online = self.is_online.swap(is_online, Ordering::SeqCst);
-        if !is_online && was_online {
-            *self.last_seen.lock().unwrap() = Some(Utc::now());
-        }
-    }
-
-    pub(crate) fn is_new_cursor_position(&self, timestamp: SystemTime) -> bool {
-        let mut last_cursor_update = self.last_cursor_update.lock().unwrap();
-
-        if last_cursor_update.is_none() || timestamp >= last_cursor_update.unwrap() {
-            *last_cursor_update = Some(timestamp);
-            true
-        } else {
-            false
-        }
-    }
 }

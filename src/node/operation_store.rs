@@ -40,7 +40,7 @@ impl OperationStore {
         self.inner.clone()
     }
 
-    pub fn inner(&self) -> &SqliteStore<LogId, ReflectionExtensions> {
+    pub const fn inner(&self) -> &SqliteStore<LogId, ReflectionExtensions> {
         &self.inner
     }
 

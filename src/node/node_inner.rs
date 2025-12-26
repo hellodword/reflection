@@ -1,14 +1,14 @@
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::{Arc, LazyLock};
 
-use super::ephemerial_operation::EphemerialOperation;
 use super::node::{ConnectionMode, NodeError};
 use super::operation::ReflectionExtensions;
 use super::operation_store::OperationStore;
 use super::subscription_inner::SubscriptionInner;
 use super::topic::{SubscribableTopic, TopicError};
 use super::topic_store::{LogId, TopicStore};
-use super::utils::CombinedMigrationSource;
 
 use p2panda_core::{Hash, PrivateKey};
 use p2panda_discovery::address_book::AddressBookStore;
@@ -18,7 +18,9 @@ use p2panda_net::{Network, NetworkBuilder};
 use p2panda_store::sqlite::store::migrations as operation_store_migrations;
 use p2panda_sync::managers::topic_sync_manager::TopicSyncManagerConfig;
 use rand_chacha::rand_core::SeedableRng;
-use sqlx::{migrate::Migrator, sqlite};
+use sqlx::error::BoxDynError;
+use sqlx::migrate::{Migration, MigrationSource, Migrator};
+use sqlx::sqlite;
 use tokio::sync::{Notify, RwLock};
 use tracing::{error, info, warn};
 
@@ -30,10 +32,30 @@ pub type TopicSyncManager = p2panda_sync::managers::topic_sync_manager::TopicSyn
     ReflectionExtensions,
 >;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub(crate) enum MessageType {
-    Ephemeral(EphemerialOperation),
-    AuthorEphemeral(EphemerialOperation),
+#[derive(Debug)]
+pub struct CombinedMigrationSource {
+    migrators: Vec<Migrator>,
+}
+
+impl CombinedMigrationSource {
+    pub const fn new(migrators: Vec<Migrator>) -> CombinedMigrationSource {
+        Self { migrators }
+    }
+}
+
+type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+impl<'s> MigrationSource<'s> for CombinedMigrationSource {
+    fn resolve(self) -> BoxFuture<'s, Result<Vec<Migration>, BoxDynError>> {
+        Box::pin(async move {
+            Ok(self
+                .migrators
+                .iter()
+                .flat_map(|migrator| migrator.iter())
+                .cloned()
+                .collect())
+        })
+    }
 }
 
 #[derive(Debug)]

@@ -35,9 +35,6 @@ pub enum TopicError {
 
 pub trait SubscribableTopic: Sync + Send {
     fn bytes_received(&self, author: PublicKey, data: Vec<u8>);
-    fn author_joined(&self, author: PublicKey);
-    fn author_left(&self, author: PublicKey);
-    fn ephemeral_bytes_received(&self, author: PublicKey, data: Vec<u8>);
 }
 
 pub struct Subscription<T> {
@@ -81,13 +78,6 @@ impl<T: SubscribableTopic + 'static> Subscription<T> {
         let inner = self.inner.clone();
         self.runtime
             .spawn(async move { inner.send_snapshot(data).await })
-            .await?
-    }
-
-    pub async fn send_ephemeral(&self, data: Vec<u8>) -> Result<(), TopicError> {
-        let inner = self.inner.clone();
-        self.runtime
-            .spawn(async move { inner.send_ephemeral(data).await })
             .await?
     }
 

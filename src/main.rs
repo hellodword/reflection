@@ -237,15 +237,6 @@ fn setup_logging() {
 }
 
 fn resolve_document_id() -> Result<(DocumentId, String)> {
-    if let Ok(hex) = env::var("REFLECTION_DOC_ID") {
-        let id = DocumentId::from_hex(&hex)
-            .map_err(|e| anyhow!("Failed to parse REFLECTION_DOC_ID: {e}"))?;
-        return Ok((
-            id,
-            format!("Using document from environment variable: {hex}"),
-        ));
-    }
-
     if let Ok(path) = env::var("REFLECTION_DOC_ID_FILE") {
         let path = PathBuf::from(path);
         let raw = fs::read_to_string(&path).unwrap_or_default();

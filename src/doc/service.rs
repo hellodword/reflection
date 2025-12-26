@@ -99,10 +99,10 @@ impl Service {
             document.unsubscribe().await;
         }
 
-        if let Some(node) = self.inner.node.lock().unwrap().clone() {
-            if let Err(error) = node.shutdown().await {
-                error!("Failed to shutdown service: {}", error);
-            }
+        if let Some(node) = self.inner.node.lock().unwrap().clone()
+            && let Err(error) = node.shutdown().await
+        {
+            error!("Failed to shutdown service: {}", error);
         }
     }
 

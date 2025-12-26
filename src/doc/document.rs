@@ -8,7 +8,6 @@ use chrono::{DateTime, Utc};
 use hex::FromHexError;
 use loro::{ExportMode, LoroDoc, LoroText, UndoManager, event::Diff};
 use p2panda_core;
-use p2panda_core::cbor::{decode_cbor, encode_cbor};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
@@ -54,18 +53,9 @@ impl DocumentId {
         Ok(DocumentId(bytes))
     }
 
-    pub fn to_hex(&self) -> String {
+    pub fn to_hex(self) -> String {
         hex::encode(self.0)
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum EphemeralData {
-    Cursor {
-        insert_cursor: Option<loro::cursor::Cursor>,
-        selection_bound: Option<loro::cursor::Cursor>,
-        timestamp: std::time::SystemTime,
-    },
 }
 
 struct DocumentInner {
@@ -74,8 +64,6 @@ struct DocumentInner {
     authors: Authors,
     subscription: Mutex<Option<Arc<Subscription<DocumentHandle>>>>,
     service: Service,
-    insert_cursor: Mutex<Option<loro::cursor::Cursor>>,
-    selection_bound: Mutex<Option<loro::cursor::Cursor>>,
     last_accessed: Mutex<Option<DateTime<Utc>>>,
     background_tasks: Mutex<Vec<JoinHandle<()>>>,
 }
@@ -98,8 +86,6 @@ impl Document {
             authors,
             subscription: Mutex::new(None),
             service: service.clone(),
-            insert_cursor: Mutex::new(None),
-            selection_bound: Mutex::new(None),
             last_accessed: Mutex::new(None),
             background_tasks: Mutex::new(Vec::new()),
         };
@@ -318,32 +304,6 @@ impl Document {
         &self.0.service
     }
 
-    fn broadcast_ephemeral(&self) {
-        let cursor_data = EphemeralData::Cursor {
-            insert_cursor: self.0.insert_cursor.lock().unwrap().clone(),
-            selection_bound: self.0.selection_bound.lock().unwrap().clone(),
-            timestamp: std::time::SystemTime::now(),
-        };
-
-        let cursor_bytes = match encode_cbor(&cursor_data) {
-            Ok(data) => data,
-            Err(error) => {
-                error!("Failed to serialize cursor: {}", error);
-                return;
-            }
-        };
-
-        if let Some(subscription) = self.subscription() {
-            let subscription = subscription.clone();
-            let handle = tokio::spawn(async move {
-                if let Err(error) = subscription.send_ephemeral(cursor_bytes).await {
-                    error!("Failed to send cursor position: {}", error);
-                }
-            });
-            self.0.background_tasks.lock().unwrap().push(handle);
-        }
-    }
-
     fn on_text_inserted(&self, _pos: i32, _text: String) {
         // TUI pulls text periodically; no-op hook
     }
@@ -367,11 +327,7 @@ unsafe impl Sync for Document {}
 #[derive(Clone)]
 struct DocumentHandle(Weak<DocumentInner>);
 
-impl DocumentHandle {
-    fn authors(&self) -> Option<Authors> {
-        self.0.upgrade().map(|arc| Document(arc).authors().clone())
-    }
-}
+impl DocumentHandle {}
 
 impl SubscribableTopic for DocumentHandle {
     fn bytes_received(&self, author: p2panda_core::PublicKey, data: Vec<u8>) {
@@ -379,47 +335,6 @@ impl SubscribableTopic for DocumentHandle {
             let doc = Document(document);
             doc.on_remote_message(data);
             doc.authors().add(PublicKey(author));
-        }
-    }
-
-    fn author_joined(&self, author: p2panda_core::PublicKey) {
-        if let Some(document) = self.0.upgrade() {
-            let doc = Document(document);
-            let author = doc.authors().add(PublicKey(author));
-            author.set_online(true);
-            doc.broadcast_ephemeral();
-        }
-    }
-
-    fn author_left(&self, author: p2panda_core::PublicKey) {
-        if let Some(document) = self.0.upgrade() {
-            let doc = Document(document);
-            let author = doc.authors().add(PublicKey(author));
-            author.set_online(false);
-        }
-    }
-
-    fn ephemeral_bytes_received(&self, author: p2panda_core::PublicKey, data: Vec<u8>) {
-        let Some(document) = self.0.upgrade() else {
-            return;
-        };
-
-        if let Ok(EphemeralData::Cursor {
-            insert_cursor,
-            selection_bound,
-            timestamp,
-        }) = decode_cbor(&data[..])
-        {
-            if let Some(authors) = self.authors() {
-                if let Some(author) = authors.author(&PublicKey(author)) {
-                    if !author.is_new_cursor_position(timestamp) {
-                        return;
-                    }
-                }
-            }
-
-            *document.insert_cursor.lock().unwrap() = insert_cursor;
-            *document.selection_bound.lock().unwrap() = selection_bound;
         }
     }
 }

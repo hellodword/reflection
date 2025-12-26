@@ -40,9 +40,4 @@ impl Authors {
             .or_insert_with_key(Author::new)
             .clone()
     }
-
-    pub fn author(&self, author_key: &PublicKey) -> Option<Author> {
-        let list = self.list.read().unwrap();
-        list.get(author_key).cloned()
-    }
 }

@@ -116,26 +116,6 @@ impl TopicStore {
         Ok(())
     }
 
-    pub async fn set_last_seen_for_author(
-        &self,
-        public_key: PublicKey,
-        last_seen: Option<DateTime<Utc>>,
-    ) -> sqlx::Result<()> {
-        sqlx::query(
-            "
-            UPDATE authors
-            SET last_seen = ?
-            WHERE public_key = ?
-            ",
-        )
-        .bind(last_seen)
-        .bind(public_key.as_bytes().as_slice())
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
     pub async fn set_last_accessed_for_topic(
         &self,
         id: &TopicId,
@@ -173,26 +153,26 @@ impl TopicStore {
 
         for author in authors.iter() {
             for log_id in &log_ids {
-                let operations = match operation_store.get_log(author, log_id, None).await {
-                    Ok(Some(operations)) => {
-                        operations
+                let operations: Vec<p2panda_core::Operation<ReflectionExtensions>> =
+                    match operation_store.get_log(author, log_id, None).await {
+                        Ok(Some(operations)) => operations
                             .into_iter()
                             .map(|(header, body)| p2panda_core::Operation {
                                 hash: header.hash(),
                                 header,
                                 body,
                             })
-                    }
-                    Ok(None) => {
-                        continue;
-                    }
-                    Err(error) => {
-                        error!(
-                            "Failed to load operation for {author} with log type {log_id:?}: {error}"
-                        );
-                        continue;
-                    }
-                };
+                            .collect(),
+                        Ok(None) => {
+                            continue;
+                        }
+                        Err(error) => {
+                            error!(
+                                "Failed to load operation for {author} with log type {log_id:?}: {error}"
+                            );
+                            continue;
+                        }
+                    };
 
                 result.extend(operations);
             }
