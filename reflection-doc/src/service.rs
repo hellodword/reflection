@@ -1,22 +1,15 @@
-use gio::prelude::{FileExt, ListModelExtManual, NetworkMonitorExt};
-use glib::object::ObjectExt;
-use glib::subclass::prelude::*;
-use glib::{Properties, clone};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+use reflection_node::node::{ConnectionMode as NodeConnectionMode, Node, NodeError};
 use reflection_node::p2panda_core::Hash;
-use std::sync::{Mutex, OnceLock};
+use reflection_node::topic::TopicError;
 use thiserror::Error;
 use tracing::error;
 
+use crate::document::{Document, DocumentId};
+use crate::documents::Documents;
 use crate::identity::PrivateKey;
-use crate::{
-    document::{Document, DocumentId},
-    documents::Documents,
-};
-use reflection_node::{
-    node,
-    node::{Node, NodeError},
-    topic::TopicError,
-};
 
 #[derive(Error, Debug)]
 pub enum StartupError {
@@ -26,120 +19,98 @@ pub enum StartupError {
     Topic(#[from] TopicError),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, glib::Enum, Default)]
-#[repr(u32)]
-#[enum_type(name = "ReflectionConnectionMode")]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum ConnectionMode {
+    #[default]
     None,
     Bluetooth,
-    #[default]
     Network,
 }
 
-impl From<ConnectionMode> for node::ConnectionMode {
+impl From<ConnectionMode> for NodeConnectionMode {
     fn from(value: ConnectionMode) -> Self {
         match value {
-            ConnectionMode::None => node::ConnectionMode::None,
-            ConnectionMode::Bluetooth => node::ConnectionMode::Bluetooth,
-            ConnectionMode::Network => node::ConnectionMode::Network,
+            ConnectionMode::None => NodeConnectionMode::None,
+            ConnectionMode::Bluetooth => NodeConnectionMode::Bluetooth,
+            ConnectionMode::Network => NodeConnectionMode::Network,
         }
     }
 }
 
-mod imp {
-    use super::*;
-
-    #[derive(Default, Properties)]
-    #[properties(wrapper_type = super::Service)]
-    pub struct Service {
-        pub node: OnceLock<Node>,
-        #[property(get, set, construct_only, type = PrivateKey)]
-        pub private_key: OnceLock<PrivateKey>,
-        #[property(get, set, construct_only, nullable, type = Option<gio::File>)]
-        pub data_dir: OnceLock<Option<gio::File>>,
-        #[property(get)]
-        documents: Documents,
-        #[property(get = Self::connection_mode, set = Self::set_connection_mode, builder(ConnectionMode::default()))]
-        pub connection_mode: Mutex<ConnectionMode>,
-    }
-
-    impl Service {
-        fn set_connection_mode(&self, connection_mode: ConnectionMode) {
-            *self.connection_mode.lock().unwrap() = connection_mode;
-            glib::spawn_future(clone!(
-                #[weak(rename_to = this)]
-                self,
-                async move {
-                    this.update_node_connection_mode().await;
-                }
-            ));
-        }
-
-        fn connection_mode(&self) -> ConnectionMode {
-            *self.connection_mode.lock().unwrap()
-        }
-
-        pub(super) async fn update_node_connection_mode(&self) {
-            let Some(node) = self.node.get() else {
-                return;
-            };
-            let network_available = {
-                let monitor = gio::NetworkMonitor::default();
-                monitor.is_network_available()
-            };
-            let connection_mode = (*self.connection_mode.lock().unwrap()).into();
-            let wants_network = connection_mode == node::ConnectionMode::Network;
-            let real_connection_mode = if !network_available && wants_network {
-                node::ConnectionMode::None
-            } else {
-                connection_mode
-            };
-
-            node.set_connection_mode(real_connection_mode)
-                .await
-                .unwrap();
-        }
-    }
-
-    #[glib::derived_properties]
-    impl ObjectImpl for Service {
-        fn constructed(&self) {
-            self.parent_constructed();
-
-            let monitor = gio::NetworkMonitor::default();
-            monitor.connect_network_available_notify(clone!(
-                #[weak(rename_to = this)]
-                self,
-                move |_| {
-                    glib::spawn_future(clone!(
-                        #[weak]
-                        this,
-                        async move {
-                            this.update_node_connection_mode().await;
-                        }
-                    ));
-                }
-            ));
-        }
-    }
-
-    #[glib::object_subclass]
-    impl ObjectSubclass for Service {
-        const NAME: &'static str = "Service";
-        type Type = super::Service;
-    }
+#[derive(Clone)]
+pub struct Service {
+    inner: Arc<ServiceInner>,
 }
 
-glib::wrapper! {
-    pub struct Service(ObjectSubclass<imp::Service>);
+struct ServiceInner {
+    node: Mutex<Option<Arc<Node>>>,
+    private_key: PrivateKey,
+    data_dir: Option<PathBuf>,
+    documents: Documents,
+    connection_mode: Mutex<ConnectionMode>,
 }
 
 impl Service {
-    pub fn new(private_key: &PrivateKey, data_dir: Option<&gio::File>) -> Self {
-        glib::Object::builder()
-            .property("private-key", private_key)
-            .property("data-dir", data_dir)
-            .build()
+    pub fn new(private_key: &PrivateKey, data_dir: Option<&Path>) -> Self {
+        Service {
+            inner: Arc::new(ServiceInner {
+                node: Mutex::new(None),
+                private_key: private_key.clone(),
+                data_dir: data_dir.map(|p| p.to_path_buf()),
+                documents: Documents::new(),
+                connection_mode: Mutex::new(ConnectionMode::Network),
+            }),
+        }
+    }
+
+    pub fn private_key(&self) -> &PrivateKey {
+        &self.inner.private_key
+    }
+
+    pub fn documents(&self) -> &Documents {
+        &self.inner.documents
+    }
+
+    pub async fn set_connection_mode(&self, connection_mode: ConnectionMode) {
+        *self.inner.connection_mode.lock().unwrap() = connection_mode;
+        self.update_node_connection_mode().await;
+    }
+
+    async fn update_node_connection_mode(&self) {
+        let Some(node) = self.inner.node.lock().unwrap().clone() else {
+            return;
+        };
+        let connection_mode: NodeConnectionMode =
+            (*self.inner.connection_mode.lock().unwrap()).into();
+        if let Err(err) = node.set_connection_mode(connection_mode).await {
+            error!("Failed to set connection mode: {err}");
+        }
+    }
+
+    pub async fn startup(&self) -> Result<(), StartupError> {
+        let private_key = self.private_key().0.clone();
+        let network_id = Hash::new(b"reflection");
+        let path_opt = self.inner.data_dir.as_deref();
+        let node = Node::new(private_key, network_id, path_opt, NodeConnectionMode::None).await?;
+
+        *self.inner.node.lock().unwrap() = Some(Arc::new(node));
+
+        self.update_node_connection_mode().await;
+        self.documents().load(self).await?;
+
+        Ok(())
+    }
+
+    pub async fn shutdown(&self) {
+        for document in self.documents().iter() {
+            document.unsubscribe().await;
+        }
+
+        if let Some(node) = self.inner.node.lock().unwrap().clone() {
+            if let Err(error) = node.shutdown().await {
+                error!("Failed to shutdown service: {}", error);
+            }
+        }
     }
 
     pub fn join_document(&self, document_id: &DocumentId) -> Document {
@@ -147,65 +118,18 @@ impl Service {
         if let Some(document) = list.document(document_id) {
             document
         } else {
-            let document = Document::new(self, document_id, None);
+            let document = Document::new(self, document_id);
             list.add(document.clone());
-
             document
         }
     }
 
-    pub fn join_document_with_main_context(
-        &self,
-        document_id: &DocumentId,
-        main_context: &glib::MainContext,
-    ) -> Document {
-        let list = self.documents();
-        if let Some(document) = list.document(document_id) {
-            document
-        } else {
-            let document = Document::new(self, document_id, Some(main_context));
-            list.add(document.clone());
-
-            document
-        }
-    }
-
-    pub async fn startup(&self) -> Result<(), StartupError> {
-        let private_key = self.private_key().0;
-        let network_id = Hash::new(b"reflection");
-        let path = self.data_dir().and_then(|data_dir| data_dir.path());
-        let node = Node::new(
-            private_key,
-            network_id,
-            path.as_deref(),
-            // gio::NetworkManager is slow to initialize the `network-available` property,
-            // so it might be incorrect therefore always start with no connection.
-            node::ConnectionMode::None,
-        )
-        .await?;
-
-        self.imp()
+    pub(crate) fn node(&self) -> Arc<Node> {
+        self.inner
             .node
-            .set(node)
-            .expect("Service to startup only once");
-
-        self.imp().update_node_connection_mode().await;
-        self.documents().load(self).await?;
-
-        Ok(())
-    }
-
-    pub async fn shutdown(&self) {
-        for document in self.documents().iter::<Document>() {
-            document.unwrap().unsubscribe().await;
-        }
-
-        if let Err(error) = self.node().shutdown().await {
-            error!("Failed to shutdown service: {}", error);
-        }
-    }
-
-    pub(crate) fn node(&self) -> &Node {
-        self.imp().node.get().expect("Service to run")
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("Service to run")
     }
 }

@@ -5,14 +5,13 @@ pub mod documents;
 pub mod service;
 
 pub mod identity {
+    use std::fmt;
     use std::hash::Hash;
 
     use reflection_node::p2panda_core;
     pub use reflection_node::p2panda_core::identity::IdentityError;
-    use std::fmt;
 
-    #[derive(Clone, Debug, glib::Boxed)]
-    #[boxed_type(name = "ReflectionPrivateKey", nullable)]
+    #[derive(Clone, Debug)]
     pub struct PrivateKey(pub(crate) p2panda_core::PrivateKey);
 
     impl Default for PrivateKey {
@@ -55,8 +54,7 @@ pub mod identity {
         }
     }
 
-    #[derive(Clone, Debug, PartialEq, Hash, Eq, glib::Boxed)]
-    #[boxed_type(name = "ReflectionPublicKey", nullable)]
+    #[derive(Clone, Debug, PartialEq, Hash, Eq)]
     pub struct PublicKey(pub(crate) p2panda_core::PublicKey);
 
     impl fmt::Display for PublicKey {
@@ -84,18 +82,16 @@ mod tests {
     use crate::identity::PrivateKey;
     use crate::service::Service;
 
-    #[test_log::test(glib::async_test)]
+    #[tokio::test]
+    #[test_log::test]
     async fn create_document() {
         let test_string = "Hello World";
-
-        let context = glib::MainContext::ref_thread_default();
-        println!("Context: {context:?}");
 
         let private_key = PrivateKey::new();
         let service = Service::new(&private_key, None);
         service.startup().await.unwrap();
 
-        let document = service.join_document_with_main_context(&DocumentId::new(), &context);
+        let document = service.join_document(&DocumentId::new());
         document.subscribe().await;
 
         assert!(document.insert_text(0, test_string).is_ok());
@@ -104,18 +100,16 @@ mod tests {
         service.shutdown().await;
     }
 
-    #[test_log::test(glib::async_test)]
+    #[tokio::test]
+    #[test_log::test]
     async fn basic_sync() {
         let test_string = "Hello World";
-
-        let context = glib::MainContext::ref_thread_default();
-        println!("Context: {context:?}");
 
         let private_key = PrivateKey::new();
         let service = Service::new(&private_key, None);
         service.startup().await.unwrap();
 
-        let document = service.join_document_with_main_context(&DocumentId::new(), &context);
+        let document = service.join_document(&DocumentId::new());
         document.subscribe().await;
         let id = document.id();
 
@@ -123,7 +117,7 @@ mod tests {
         let service2 = Service::new(&private_key2, None);
         service2.startup().await.unwrap();
 
-        let document2 = service2.join_document_with_main_context(&id, &context);
+        let document2 = service2.join_document(&id);
         document2.subscribe().await;
 
         assert_eq!(document.id(), document2.id());
@@ -137,18 +131,16 @@ mod tests {
         assert_eq!(document2.text(), test_string);
     }
 
-    #[test_log::test(glib::async_test)]
+    #[tokio::test]
+    #[test_log::test]
     async fn sync_multiple_changes() {
         let expected_string = "Hello, World!";
-
-        let context = glib::MainContext::ref_thread_default();
-        println!("Context: {context:?}");
 
         let private_key = PrivateKey::new();
         let service = Service::new(&private_key, None);
         service.startup().await.unwrap();
 
-        let document = service.join_document_with_main_context(&DocumentId::new(), &context);
+        let document = service.join_document(&DocumentId::new());
         document.subscribe().await;
         let id = document.id();
 
@@ -156,7 +148,7 @@ mod tests {
         let service2 = Service::new(&private_key2, None);
         service2.startup().await.unwrap();
 
-        let document2 = service2.join_document_with_main_context(&id, &context);
+        let document2 = service2.join_document(&id);
         document2.subscribe().await;
 
         assert_eq!(document.id(), document2.id());
@@ -173,7 +165,8 @@ mod tests {
         assert_eq!(document2.text(), expected_string);
     }
 
-    #[test_log::test(glib::async_test)]
+    #[tokio::test]
+    #[test_log::test]
     async fn sync_longer_text() {
         let test_string = "Et aut omnis eos corporis ut. Qui est blanditiis blanditiis.
         Sit quia nam maxime accusantium ut voluptatem. Fuga consequuntur animi et et est.
@@ -183,14 +176,11 @@ mod tests {
             test_string, test_string, test_string, test_string
         );
 
-        let context = glib::MainContext::ref_thread_default();
-        println!("Context: {context:?}");
-
         let private_key = PrivateKey::new();
         let service = Service::new(&private_key, None);
         service.startup().await.unwrap();
 
-        let document = service.join_document_with_main_context(&DocumentId::new(), &context);
+        let document = service.join_document(&DocumentId::new());
         let id = document.id();
 
         document.subscribe().await;
@@ -199,7 +189,7 @@ mod tests {
         let service2 = Service::new(&private_key2, None);
         service2.startup().await.unwrap();
 
-        let document2 = service2.join_document_with_main_context(&id, &context);
+        let document2 = service2.join_document(&id);
         document2.subscribe().await;
 
         assert_eq!(document.id(), document2.id());

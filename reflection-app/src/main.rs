@@ -10,7 +10,6 @@ use crossterm::event::{
 };
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use crossterm::{execute, terminal};
-use glib::MainLoop;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -33,9 +32,7 @@ struct App {
 }
 
 impl App {
-    async fn new() -> Result<(Self, MainLoop)> {
-        let glib_loop = start_glib_loop();
-
+    async fn new() -> Result<Self> {
         let private_key = PrivateKey::new();
         let service = Service::new(&private_key, None);
         service.startup().await?;
@@ -47,17 +44,14 @@ impl App {
         let text = document.text();
         let cursor = text.len();
 
-        Ok((
-            Self {
-                service,
-                document,
-                document_id,
-                text,
-                cursor,
-                status: initial_status,
-            },
-            glib_loop,
-        ))
+        Ok(Self {
+            service,
+            document,
+            document_id,
+            text,
+            cursor,
+            status: initial_status,
+        })
     }
 
     fn handle_input(&mut self, key: KeyCode) {
@@ -126,7 +120,7 @@ impl App {
 async fn main() -> Result<()> {
     setup_logging();
 
-    let (mut app, glib_loop) = App::new().await?;
+    let mut app = App::new().await?;
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -148,7 +142,6 @@ async fn main() -> Result<()> {
     terminal.show_cursor()?;
 
     app.service.shutdown().await;
-    glib_loop.quit();
 
     if let Err(err) = res {
         error!("Error on exit: {err}");
@@ -222,17 +215,6 @@ fn draw(frame: &mut ratatui::Frame, app: &App) {
     frame.render_widget(header, chunks[0]);
     frame.render_widget(body, chunks[1]);
     frame.render_widget(footer, chunks[2]);
-}
-
-fn start_glib_loop() -> MainLoop {
-    let main_loop = glib::MainLoop::new(None, false);
-    let ctx = glib::MainContext::default();
-    let loop_clone = main_loop.clone();
-    std::thread::spawn(move || {
-        let _guard = ctx.acquire().expect("acquire glib main context");
-        loop_clone.run();
-    });
-    main_loop
 }
 
 async fn read_event() -> Result<Option<Event>> {
