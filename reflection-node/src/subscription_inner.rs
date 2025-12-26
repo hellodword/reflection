@@ -382,8 +382,8 @@ async fn setup_network<T: SubscribableTopic + 'static>(
 
             // Forward the payload up to the app.
             if let Some(body) = operation.body {
-                subscribable_topic_clone
-                    .bytes_received(operation.header.public_key, body.to_bytes());
+                let bytes: Vec<u8> = body.to_bytes();
+                subscribable_topic_clone.bytes_received(operation.header.public_key, bytes);
             }
         }
     })
