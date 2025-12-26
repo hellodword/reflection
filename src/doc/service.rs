@@ -1,15 +1,15 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use reflection_node::node::{ConnectionMode as NodeConnectionMode, Node, NodeError};
-use reflection_node::p2panda_core::Hash;
-use reflection_node::topic::TopicError;
+use crate::node::node::{ConnectionMode as NodeConnectionMode, Node, NodeError};
+use crate::node::topic::TopicError;
+use p2panda_core::Hash;
 use thiserror::Error;
 use tracing::error;
 
-use crate::document::{Document, DocumentId};
-use crate::documents::Documents;
-use crate::identity::PrivateKey;
+use super::document::{Document, DocumentId};
+use super::documents::Documents;
+use super::identity::PrivateKey;
 
 #[derive(Error, Debug)]
 pub enum StartupError {
@@ -23,7 +23,6 @@ pub enum StartupError {
 pub enum ConnectionMode {
     #[default]
     None,
-    Bluetooth,
     Network,
 }
 
@@ -31,7 +30,6 @@ impl From<ConnectionMode> for NodeConnectionMode {
     fn from(value: ConnectionMode) -> Self {
         match value {
             ConnectionMode::None => NodeConnectionMode::None,
-            ConnectionMode::Bluetooth => NodeConnectionMode::Bluetooth,
             ConnectionMode::Network => NodeConnectionMode::Network,
         }
     }
@@ -69,11 +67,6 @@ impl Service {
 
     pub fn documents(&self) -> &Documents {
         &self.inner.documents
-    }
-
-    pub async fn set_connection_mode(&self, connection_mode: ConnectionMode) {
-        *self.inner.connection_mode.lock().unwrap() = connection_mode;
-        self.update_node_connection_mode().await;
     }
 
     async fn update_node_connection_mode(&self) {

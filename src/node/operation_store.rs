@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::{SystemTime, SystemTimeError};
 
-use crate::topic_store::LogId;
+use super::topic_store::LogId;
 use p2panda_core::{Body, Header, Operation, PrivateKey, PruneFlag};
 use p2panda_net::TopicId;
 use p2panda_store::{
@@ -10,7 +10,7 @@ use p2panda_store::{
 use thiserror::Error;
 use tokio::sync::Semaphore;
 
-use crate::operation::{LogType, ReflectionExtensions};
+use super::operation::{LogType, ReflectionExtensions};
 
 #[derive(Debug, Error)]
 pub enum CreationError {

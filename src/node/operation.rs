@@ -4,7 +4,7 @@ use p2panda_core::{Extension, Header, PruneFlag};
 use p2panda_net::TopicId;
 use serde::{Deserialize, Serialize};
 
-use crate::topic_store::LogId;
+use super::topic_store::LogId;
 
 /// Custom extensions for p2panda header.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 
-use crate::ephemerial_operation::EphemerialOperation;
-use crate::node::{ConnectionMode, NodeError};
-use crate::operation::ReflectionExtensions;
-use crate::operation_store::OperationStore;
-use crate::subscription_inner::SubscriptionInner;
-use crate::topic::{SubscribableTopic, TopicError};
-use crate::topic_store::{LogId, TopicStore};
-use crate::utils::CombinedMigrationSource;
+use super::ephemerial_operation::EphemerialOperation;
+use super::node::{ConnectionMode, NodeError};
+use super::operation::ReflectionExtensions;
+use super::operation_store::OperationStore;
+use super::subscription_inner::SubscriptionInner;
+use super::topic::{SubscribableTopic, TopicError};
+use super::topic_store::{LogId, TopicStore};
+use super::utils::CombinedMigrationSource;
 
 use p2panda_core::{Hash, PrivateKey};
 use p2panda_discovery::address_book::AddressBookStore;
@@ -98,9 +98,6 @@ impl NodeInner {
 
         let network = match connection_mode {
             ConnectionMode::None => None,
-            ConnectionMode::Bluetooth => {
-                unimplemented!("Bluetooth is currently not implemented")
-            }
             ConnectionMode::Network => {
                 setup_network(&private_key, &network_id, &topic_store, &operation_store).await
             }
@@ -125,9 +122,6 @@ impl NodeInner {
 
         let network = match connection_mode {
             ConnectionMode::None => None,
-            ConnectionMode::Bluetooth => {
-                unimplemented!("Bluetooth is currently not implemented")
-            }
             ConnectionMode::Network => {
                 setup_network(
                     &self.private_key,
@@ -172,11 +166,6 @@ impl NodeInner {
         }
 
         Ok(SubscriptionInner::new(self.clone(), id, subscribable_topic))
-    }
-
-    pub async fn delete_topic(self: Arc<Self>, id: TopicId) -> Result<(), TopicError> {
-        self.topic_store.delete_topic(&id).await?;
-        Ok(())
     }
 }
 

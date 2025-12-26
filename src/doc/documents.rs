@@ -3,10 +3,10 @@ use std::sync::{Arc, RwLock};
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 
-use crate::author::Author;
-use crate::document::{Document, DocumentId};
-use crate::identity::PublicKey;
-use crate::service::Service;
+use super::author::Author;
+use super::document::{Document, DocumentId};
+use super::identity::PublicKey;
+use super::service::Service;
 
 #[derive(Default, Clone)]
 pub struct Documents {
@@ -18,7 +18,7 @@ impl Documents {
         Self::default()
     }
 
-    pub async fn load(&self, service: &Service) -> Result<(), crate::service::StartupError> {
+    pub async fn load(&self, service: &Service) -> Result<(), super::service::StartupError> {
         let public_key = service.private_key().public_key();
 
         let documents = service.node().topics::<DocumentId>().await?;
@@ -65,11 +65,6 @@ impl Documents {
         }
 
         list.insert(document_id, document);
-    }
-
-    pub fn remove(&self, document_id: &DocumentId) {
-        let mut list = self.list.write().unwrap();
-        list.shift_remove(document_id);
     }
 
     pub fn document(&self, document_id: &DocumentId) -> Option<Document> {

@@ -3,8 +3,8 @@ use std::sync::{Arc, RwLock};
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 
-use crate::author::Author;
-use crate::identity::PublicKey;
+use super::author::Author;
+use super::identity::PublicKey;
 
 #[derive(Default, Clone)]
 pub struct Authors {
@@ -44,10 +44,5 @@ impl Authors {
     pub fn author(&self, author_key: &PublicKey) -> Option<Author> {
         let list = self.list.read().unwrap();
         list.get(author_key).cloned()
-    }
-
-    pub fn iter(&self) -> Vec<Author> {
-        let list = self.list.read().unwrap();
-        list.values().cloned().collect()
     }
 }

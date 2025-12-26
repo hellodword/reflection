@@ -7,10 +7,10 @@ use p2panda_net::TopicId;
 use thiserror::Error;
 use tracing::info;
 
-use crate::node_inner::NodeInner;
-use crate::topic::{SubscribableTopic, Subscription, TopicError};
-pub use crate::topic_store::Author;
-use crate::topic_store::StoreTopic;
+use super::node_inner::NodeInner;
+use super::topic::{SubscribableTopic, Subscription, TopicError};
+pub use super::topic_store::Author;
+use super::topic_store::StoreTopic;
 
 #[derive(Debug, Error)]
 pub enum NodeError {
@@ -28,14 +28,12 @@ pub enum NodeError {
 pub enum ConnectionMode {
     #[default]
     None,
-    Bluetooth,
     Network,
 }
 
 #[derive(Clone, Debug)]
 pub struct Topic<ID> {
     pub id: ID,
-    pub name: Option<String>,
     pub last_accessed: Option<DateTime<Utc>>,
     pub authors: Vec<Author>,
 }
@@ -130,13 +128,11 @@ impl Node {
             .map(|topic| {
                 let StoreTopic {
                     id,
-                    name,
                     last_accessed,
                     authors,
                 } = topic;
                 Topic {
                     id: id.into(),
-                    name,
                     last_accessed,
                     authors,
                 }
@@ -163,13 +159,5 @@ impl Node {
         info!("Subscribed to topic {}", hex::encode(id));
 
         Ok(subscription)
-    }
-
-    pub async fn delete_topic<ID: Into<[u8; 32]>>(&self, id: ID) -> Result<(), TopicError> {
-        let id: TopicId = id.into();
-        let inner_clone = self.inner.clone();
-        self.runtime
-            .spawn(async move { inner_clone.delete_topic(id).await })
-            .await?
     }
 }

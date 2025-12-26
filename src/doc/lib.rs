@@ -2,14 +2,14 @@ pub mod author;
 pub mod authors;
 pub mod document;
 pub mod documents;
+pub mod node;
 pub mod service;
 
 pub mod identity {
     use std::fmt;
     use std::hash::Hash;
 
-    use reflection_node::p2panda_core;
-    pub use reflection_node::p2panda_core::identity::IdentityError;
+    pub use p2panda_core::identity::IdentityError;
 
     #[derive(Clone, Debug)]
     pub struct PrivateKey(pub(crate) p2panda_core::PrivateKey);

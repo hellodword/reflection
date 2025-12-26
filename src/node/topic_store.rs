@@ -10,15 +10,13 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Row};
 use tracing::error;
 
-use crate::operation::{LogType, ReflectionExtensions};
-use crate::operation_store::OperationStore;
+use super::operation::{LogType, ReflectionExtensions};
+use super::operation_store::OperationStore;
 
 #[derive(Debug, FromRow)]
 pub struct StoreTopic {
     #[sqlx(try_from = "Vec<u8>")]
     pub id: TopicId,
-    #[sqlx(default)]
-    pub name: Option<String>,
     pub last_accessed: Option<DateTime<Utc>>,
     #[sqlx(skip)]
     pub authors: Vec<Author>,
@@ -102,15 +100,6 @@ impl TopicStore {
         Ok(())
     }
 
-    pub async fn delete_topic(&self, id: &TopicId) -> sqlx::Result<()> {
-        sqlx::query("DELETE FROM topics WHERE id = ?")
-            .bind(id.as_slice())
-            .execute(&self.pool)
-            .await?;
-
-        Ok(())
-    }
-
     pub async fn add_author(&self, id: &TopicId, public_key: &PublicKey) -> sqlx::Result<()> {
         // The author/id pair is required to be unique therefore ignore if the insertion fails
         sqlx::query(
@@ -141,22 +130,6 @@ impl TopicStore {
         )
         .bind(last_seen)
         .bind(public_key.as_bytes().as_slice())
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn set_name_for_topic(&self, id: &TopicId, name: Option<String>) -> sqlx::Result<()> {
-        sqlx::query(
-            "
-            UPDATE topics
-            SET name = ?
-            WHERE id = ?
-            ",
-        )
-        .bind(name)
-        .bind(id.as_slice())
         .execute(&self.pool)
         .await?;
 

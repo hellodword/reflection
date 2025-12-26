@@ -21,12 +21,12 @@ use tokio::{
 use tokio_stream::{StreamExt, wrappers::ReceiverStream};
 use tracing::{error, info, warn};
 
-use crate::author_tracker::{AuthorMessage, AuthorTracker};
-use crate::ephemerial_operation::EphemerialOperation;
-use crate::node_inner::MessageType;
-use crate::node_inner::{NodeInner, TopicSyncManager};
-use crate::operation::{LogType, ReflectionExtensions};
-use crate::topic::{SubscribableTopic, TopicError};
+use super::author_tracker::{AuthorMessage, AuthorTracker};
+use super::ephemerial_operation::EphemerialOperation;
+use super::node_inner::MessageType;
+use super::node_inner::{NodeInner, TopicSyncManager};
+use super::operation::{LogType, ReflectionExtensions};
+use super::topic::{SubscribableTopic, TopicError};
 
 pub struct SubscriptionInner<T> {
     ephemeral_tx: RwLock<Option<EphemeralStream>>,
@@ -226,18 +226,6 @@ impl<T: SubscribableTopic + 'static> SubscriptionInner<T> {
             let bytes = encode_cbor(&MessageType::Ephemeral(operation))?;
             ephemeral_tx.publish(bytes).await?;
         }
-
-        Ok(())
-    }
-
-    /// Set the name for a given topic
-    ///
-    /// This information will be written to the database
-    pub async fn set_name(&self, name: Option<String>) -> Result<(), TopicError> {
-        self.node
-            .topic_store
-            .set_name_for_topic(&self.id, name)
-            .await?;
 
         Ok(())
     }

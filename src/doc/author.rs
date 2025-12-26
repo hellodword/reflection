@@ -4,7 +4,7 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
 
-use crate::identity::PublicKey;
+use super::identity::PublicKey;
 
 #[derive(Debug)]
 pub struct Author {

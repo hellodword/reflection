@@ -2,22 +2,22 @@ use std::fmt;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex, Weak};
 
+use crate::node::topic::{SubscribableTopic, Subscription};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use hex::FromHexError;
 use loro::{ExportMode, LoroDoc, LoroText, UndoManager, event::Diff};
+use p2panda_core;
 use p2panda_core::cbor::{decode_cbor, encode_cbor};
 use rand::RngCore;
-use reflection_node::p2panda_core;
-use reflection_node::topic::{SubscribableTopic, Subscription};
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 use tracing::error;
 
-use crate::author::Author;
-use crate::authors::Authors;
-use crate::identity::PublicKey;
-use crate::service::Service;
+use super::author::Author;
+use super::authors::Authors;
+use super::identity::PublicKey;
+use super::service::Service;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DocumentId([u8; 32]);
@@ -71,7 +71,6 @@ pub enum EphemeralData {
 struct DocumentInner {
     id: DocumentId,
     loro_doc: LoroDoc,
-    undo_manager: Mutex<UndoManager>,
     authors: Authors,
     subscription: Mutex<Option<Arc<Subscription<DocumentHandle>>>>,
     service: Service,
@@ -96,7 +95,6 @@ impl Document {
         let inner = DocumentInner {
             id: *id,
             loro_doc,
-            undo_manager: Mutex::new(undo_manager),
             authors,
             subscription: Mutex::new(None),
             service: service.clone(),
@@ -219,43 +217,6 @@ impl Document {
         &self.0.authors
     }
 
-    pub fn undo(&self) -> (i32, Option<i32>) {
-        let mut guard = self.0.undo_manager.lock().unwrap();
-        let undo_manager: &mut UndoManager = &mut *guard;
-        if let Err(error) = undo_manager.undo() {
-            error!("Failed to undo changes: {error}");
-        }
-        self.cursor_positions()
-    }
-
-    pub fn redo(&self) -> (i32, Option<i32>) {
-        let mut guard = self.0.undo_manager.lock().unwrap();
-        let undo_manager: &mut UndoManager = &mut *guard;
-        if let Err(error) = undo_manager.redo() {
-            error!("Failed to redo changes: {error}");
-        }
-        self.cursor_positions()
-    }
-
-    pub fn set_insert_cursor(&self, position: i32, send: bool) {
-        let text_id = loro::ContainerID::new_root("document", loro::ContainerType::Text);
-        let text_node: LoroText = self.0.loro_doc.get_text(&text_id);
-        let insert_cursor = text_node.get_cursor(position as usize, Default::default());
-        *self.0.insert_cursor.lock().unwrap() = insert_cursor;
-
-        if send {
-            self.broadcast_ephemeral();
-        }
-    }
-
-    pub fn set_selection_bound(&self, position: Option<i32>) {
-        let text_id = loro::ContainerID::new_root("document", loro::ContainerType::Text);
-        let text_node: LoroText = self.0.loro_doc.get_text(&text_id);
-        let cursor =
-            position.and_then(|pos| text_node.get_cursor(pos as usize, Default::default()));
-        *self.0.selection_bound.lock().unwrap() = cursor;
-    }
-
     pub async fn subscribe(&self) {
         if self.subscribed() {
             return;
@@ -331,25 +292,12 @@ impl Document {
         }
     }
 
-    pub async fn delete(&self) {
-        if let Err(error) = self.service().node().delete_topic(self.id()).await {
-            error!("Failed to delete document from document store: {}", error);
-            return;
-        }
-
-        self.service().documents().remove(&self.id());
-    }
-
     pub(crate) fn load_authors(&self, authors: Vec<Author>) {
         self.0.authors.load(authors);
     }
 
     pub(crate) fn set_last_accessed(&self, ts: Option<DateTime<Utc>>) {
         *self.0.last_accessed.lock().unwrap() = ts;
-    }
-
-    pub fn last_accessed(&self) -> Option<DateTime<Utc>> {
-        *self.0.last_accessed.lock().unwrap()
     }
 
     fn on_remote_message(&self, bytes: Vec<u8>) {
@@ -368,42 +316,6 @@ impl Document {
 
     fn service(&self) -> &Service {
         &self.0.service
-    }
-
-    fn cursor_positions(&self) -> (i32, Option<i32>) {
-        // let text_id = loro::ContainerID::new_root("document", loro::ContainerType::Text);
-        let doc = &self.0.loro_doc;
-
-        let insert_cursor = self.0.insert_cursor.lock().unwrap();
-        let insert_cursor_pos = if let Some(insert_cursor) = insert_cursor.as_ref() {
-            match doc.get_cursor_pos(insert_cursor) {
-                Ok(loro::cursor::PosQueryResult { current, .. }) => Some(current.pos),
-                Err(error) => {
-                    error!("Failed to get current insert cursor position: {error}");
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
-        let selection_bound = self.0.selection_bound.lock().unwrap();
-        let selection_bound_pos = if let Some(selection_bound) = selection_bound.as_ref() {
-            match doc.get_cursor_pos(selection_bound) {
-                Ok(loro::cursor::PosQueryResult { current, .. }) => Some(current.pos),
-                Err(error) => {
-                    error!("Failed to get current selection bound position: {error}");
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
-        (
-            insert_cursor_pos.unwrap_or_default() as i32,
-            selection_bound_pos.map(|pos| pos as i32),
-        )
     }
 
     fn broadcast_ephemeral(&self) {

@@ -4,21 +4,24 @@ use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
 
+mod doc;
+mod node;
+
 use anyhow::{Result, anyhow};
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind,
 };
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use crossterm::{execute, terminal};
+use doc::document::{Document, DocumentId};
+use doc::identity::PrivateKey;
+use doc::service::Service;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
-use reflection_doc::document::{Document, DocumentId};
-use reflection_doc::identity::PrivateKey;
-use reflection_doc::service::Service;
 use tokio::time::Interval;
 use tracing::error;
 

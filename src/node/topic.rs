@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::operation::ReflectionExtensions;
-use crate::operation_store::CreationError;
-use crate::subscription_inner::SubscriptionInner;
+use super::operation::ReflectionExtensions;
+use super::operation_store::CreationError;
+use super::subscription_inner::SubscriptionInner;
 
 use p2panda_core::{Operation, PublicKey};
 use p2panda_net::streams::StreamError;
@@ -103,15 +103,5 @@ impl<T: SubscribableTopic + 'static> Subscription<T> {
         info!("Unsubscribed from topic {}", hex::encode(id));
 
         Ok(())
-    }
-
-    /// Set the name for a given topic
-    ///
-    /// This information will be written to the database
-    pub async fn set_name(&self, name: Option<String>) -> Result<(), TopicError> {
-        let inner = self.inner.clone();
-        self.runtime
-            .spawn(async move { inner.set_name(name).await })
-            .await?
     }
 }
