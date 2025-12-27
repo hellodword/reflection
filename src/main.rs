@@ -1,8 +1,9 @@
-use std::env;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
+
+use clap::Parser;
 
 mod doc;
 mod node;
@@ -16,6 +17,19 @@ use crossterm::{execute, terminal};
 use doc::document::{Document, DocumentId};
 use doc::identity::PrivateKey;
 use doc::service::Service;
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Path to the file containing the document ID
+    #[arg(long)]
+    doc_id_file: PathBuf,
+
+    /// Optional data directory for service persistence
+    #[arg(long)]
+    data_dir: Option<PathBuf>,
+}
+
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -35,12 +49,12 @@ struct App {
 }
 
 impl App {
-    async fn new() -> Result<Self> {
+    async fn new(data_dir: Option<PathBuf>, doc_id_file: PathBuf) -> Result<Self> {
         let private_key = PrivateKey::new();
-        let service = Service::new(&private_key, None);
+        let service = Service::new(&private_key, data_dir.as_deref());
         service.startup().await?;
 
-        let (document_id, initial_status) = resolve_document_id()?;
+        let (document_id, initial_status) = resolve_document_id(doc_id_file)?;
         let document = service.join_document(&document_id);
         document.subscribe().await;
 
@@ -123,7 +137,8 @@ impl App {
 async fn main() -> Result<()> {
     setup_logging();
 
-    let mut app = App::new().await?;
+    let args = Args::parse();
+    let mut app = App::new(args.data_dir, args.doc_id_file).await?;
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -236,46 +251,35 @@ fn setup_logging() {
         .try_init();
 }
 
-fn resolve_document_id() -> Result<(DocumentId, String)> {
-    if let Ok(path) = env::var("REFLECTION_DOC_ID_FILE") {
-        let path = PathBuf::from(path);
-        let raw = fs::read_to_string(&path).unwrap_or_default();
-        let hex = raw.trim();
+fn resolve_document_id(doc_id_file: PathBuf) -> Result<(DocumentId, String)> {
+    let raw = fs::read_to_string(&doc_id_file).unwrap_or_default();
+    let hex = raw.trim();
 
-        if hex.is_empty() {
-            let id = DocumentId::new();
-            if let Some(parent) = path.parent() {
-                if !parent.as_os_str().is_empty() {
-                    fs::create_dir_all(parent)?;
-                }
+    if hex.is_empty() {
+        let id = DocumentId::new();
+        if let Some(parent) = doc_id_file.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent)?;
             }
-            fs::write(&path, id.to_string())?;
-            return Ok((
-                id,
-                format!(
-                    "Created new document and wrote to REFLECTION_DOC_ID_FILE: {}",
-                    path.display()
-                ),
-            ));
         }
-
-        let id = DocumentId::from_hex(hex)
-            .map_err(|e| anyhow!("Failed to parse REFLECTION_DOC_ID_FILE contents: {e}"))?;
+        fs::write(&doc_id_file, id.to_string())?;
         return Ok((
             id,
-            format!("Using document from file: {} ({})", hex, path.display()),
+            format!(
+                "Created new document and wrote to doc_id_file: {}",
+                doc_id_file.display()
+            ),
         ));
     }
 
-    if let Some(hex) = env::args().nth(1) {
-        let id = DocumentId::from_hex(&hex)
-            .map_err(|e| anyhow!("Failed to parse command line document ID: {e}"))?;
-        return Ok((id, format!("Using command line document: {hex}")));
-    }
-
-    let id = DocumentId::new();
+    let id = DocumentId::from_hex(hex)
+        .map_err(|e| anyhow!("Failed to parse doc_id_file contents: {e}"))?;
     Ok((
         id,
-        format!("Created new document; share this ID to collaborate: {}", id),
+        format!(
+            "Using document from file: {} ({})",
+            hex,
+            doc_id_file.display()
+        ),
     ))
 }
